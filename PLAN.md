@@ -67,7 +67,7 @@ But général : vérifier que le service se comporte comme décrit dans `triangu
 
 But général : s'assurer que la triangulation et la conversion binaire restent utilisables à des tailles réalistes, sans ralentir la suite de tests principale
 
-- Chaque test définit un seuil explicite (borne large, pas un objectif de perf strict) au-delà duquel il échoue (ex: "triangulation de 5000 points doit rester sous X secondes"). Sans ça, "mesurer" ne sert à rien en automatique, il faut un critère pass/fail exploitable
+- Chaque test définit un seuil explicite (borne large, pas un objectif de perf strict) au-delà duquel il échoue (ex: "triangulation de 5000 points doit rester sous X secondes"). ans ça, "mesurer" ne sert à rien en automatique, il faut un critère pass/fail exploitable
 - Temps de triangulation sur des jeux de points de tailles croissantes (ex: 100, 1000, quelques milliers de points) (permet de voir comment le temps évolue avec la taille des données)
 - Au moins un cas extrême (ex: 10 000 ou 50 000 points), au-delà des tailles "réalistes" (pour voir où ça commence vraiment à devenir problématique, même si ce n'est pas un usage normal)
 - Temps d'encodage/décodage binaire sur des jeux de données volumineux (la conversion binaire est censée être rapide, on veut vérifier qu'elle le reste vraiment même à grande échelle, séparément de la triangulation qui est l'opération la plus coûteuse)
