@@ -8,3 +8,8 @@ select = [
     "SIM",
     "I",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "perf: tests de performance (bornes de temps larges, exclus de `make unit_test`)",
+]
