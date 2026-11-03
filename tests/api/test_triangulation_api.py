@@ -1,3 +1,5 @@
+"""Tests bout-en-bout de l'API HTTP du `Triangulator` (PLAN.md, section 3)."""
+
 from unittest.mock import Mock
 
 import pytest
@@ -5,6 +7,7 @@ import pytest
 from triangulator.app import create_app
 from triangulator.binary import decode_triangles
 from triangulator.errors import (
+    BinaryFormatError,
     PointSetManagerBadRequestError,
     PointSetManagerUnavailableError,
     PointSetNotFoundError,
@@ -50,7 +53,7 @@ def test_pointsetid_valide_et_pointset_correct_reussit(client, monkeypatch):
 
 
 def test_pointsetid_mal_forme_echoue_sans_appel_reseau(client, monkeypatch):
-    """`PointSetID` mal formé (pas un UUID) → échec, 400, sans contacter le `PointSetManager`."""
+    """ID mal formé (pas un UUID) → échec 400, sans appeler le PointSetManager."""
     fetch = Mock()
     monkeypatch.setattr("triangulator.app.fetch_point_set", fetch)
 
@@ -58,6 +61,7 @@ def test_pointsetid_mal_forme_echoue_sans_appel_reseau(client, monkeypatch):
 
     assert response.status_code == 400
     _assert_corps_erreur(response)
+    #l'ID invalide doit être rejeté avant tout appel au PointSetManager
     fetch.assert_not_called()
 
 
@@ -87,7 +91,7 @@ def test_pointsetmanager_repond_not_found_echoue(client, monkeypatch):
 
 
 def test_pointsetmanager_repond_bad_request_echoue(client, monkeypatch):
-    """`PointSetManager` répond "bad request" → échec, 400, l'erreur amont est relayée."""
+    """`PointSetManager` répond "bad request" → échec, 400, erreur amont relayée."""
     monkeypatch.setattr(
         "triangulator.app.fetch_point_set",
         Mock(side_effect=PointSetManagerBadRequestError(_UUID_VALIDE)),
@@ -112,10 +116,10 @@ def test_pointsetmanager_injoignable_ou_en_erreur_echoue(client, monkeypatch):
     _assert_corps_erreur(response)
 
 
-def test_pointsetmanager_renvoie_des_donnees_binaires_invalides_echoue(client, monkeypatch):
+def test_pointsetmanager_renvoie_des_donnees_binaires_invalides_echoue(
+    client, monkeypatch
+):
     """`PointSetManager` renvoie des données binaires invalides → échec, 500."""
-    from triangulator.errors import BinaryFormatError
-
     monkeypatch.setattr(
         "triangulator.app.fetch_point_set",
         Mock(side_effect=BinaryFormatError("corrupted PointSet payload")),

@@ -1,3 +1,5 @@
+"""Tests du format binaire `PointSet` / `Triangles` (PLAN.md, section 2)."""
+
 import math
 import time
 
@@ -11,12 +13,14 @@ from triangulator.binary import (
 )
 from triangulator.errors import BinaryFormatError
 
-# Entête des deux structures : un unsigned long de 4 bytes donnant un nombre d'éléments. Cette valeur est 4294967295 quel que soit le boutisme, ce qui permet de forger un compteur absurde sans présumer de celui du format.
+# 4294967295 (max d'un unsigned long 4 bytes), sert à simuler un compteur
+# de points/triangles délirant, quel que soit le boutisme
 _COMPTEUR_ABSURDE = b"\xff\xff\xff\xff"
 
 
 def _points_exacts(count):
-    """`count` points distincts, à coordonnées exactement représentables en binary32."""
+    """Génère `count` points à coordonnées exactement représentables en binary32."""
+    # Des multiples de 1/4 et 1/8 restent exacts en float 32 bits
     return [(i / 4.0, -i / 8.0) for i in range(count)]
 
 
@@ -62,7 +66,8 @@ def test_un_seul_triangle_fait_un_aller_retour():
     """1 seul triangle → succès, pas d'erreur d'index sur un unique élément."""
     points = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
 
-    assert decode_triangles(encode_triangles(points, [(0, 1, 2)])) == (points, [(0, 1, 2)])
+    decoded = decode_triangles(encode_triangles(points, [(0, 1, 2)]))
+    assert decoded == (points, [(0, 1, 2)])
 
 
 def test_grand_nombre_de_points_et_de_triangles_fait_un_aller_retour():
@@ -75,20 +80,21 @@ def test_grand_nombre_de_points_et_de_triangles_fait_un_aller_retour():
 
 
 def test_coordonnees_negatives_et_precision_decimale_sont_preservees():
-    """Coordonnées négatives, grande précision décimale → succès, pas de troncature au-delà du `float`."""
+    """Coordonnées négatives, précision décimale → succès, sans troncature excessive."""
     points = [(-0.1, 0.2), (math.pi, -math.e), (1e-7, -1e7), (-1.0 / 3.0, 2.0 / 3.0)]
 
     decoded = decode_point_set(encode_point_set(points))
 
     assert len(decoded) == len(points)
-    # binary32 garantit ~7 chiffres significatifs : on vérifie que rien n'est perdu au-delà de cette limite intrinsèque au format imposé.
+    # Le format stocke des float 32 bits : une perte de précision au-delà de
+    # ~7 chiffres significatifs est normale, pas un bug
     for (x, y), (expected_x, expected_y) in zip(decoded, points, strict=True):
         assert x == pytest.approx(expected_x, rel=1e-6)
         assert y == pytest.approx(expected_y, rel=1e-6)
 
 
 def test_point_set_tronque_echoue():
-    """`PointSet` dont la taille ne correspond pas au compteur annoncé (tronqué) → échec."""
+    """`PointSet` tronqué (taille ≠ compteur annoncé) → échec."""
     data = encode_point_set(_points_exacts(3))
 
     with pytest.raises(BinaryFormatError):
@@ -108,7 +114,7 @@ def test_point_set_avec_octets_en_trop_echoue():
 
 
 def test_triangles_tronques_echouent():
-    """`Triangles` dont la taille ne correspond pas aux compteurs annoncés (tronqué) → échec."""
+    """`Triangles` tronqué (taille ≠ compteurs annoncés) → échec."""
     points = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
     data = encode_triangles(points, [(0, 1, 2)])
 
@@ -119,7 +125,7 @@ def test_triangles_tronques_echouent():
 
 
 def test_triangles_avec_octets_en_trop_echouent():
-    """`Triangles` avec des octets en trop par rapport aux compteurs annoncés → échec."""
+    """`Triangles` avec des octets en trop par rapport au compteur annoncé → échec."""
     points = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
     data = encode_triangles(points, [(0, 1, 2)])
 
@@ -128,18 +134,17 @@ def test_triangles_avec_octets_en_trop_echouent():
 
 
 def test_compteur_de_points_absurde_echoue_proprement():
-    """Compteur de points absurde avec un buffer minuscule → échec propre, pas d'allocation déraisonnable."""
+    """Compteur de points absurde → échec propre, sans grosse allocation mémoire."""
     data = _COMPTEUR_ABSURDE + b"\x00" * 8
 
     start = time.perf_counter()
     with pytest.raises(BinaryFormatError):
         decode_point_set(data)
-    # Un rejet quasi instantané est la trace observable du fait que le décodeur a comparé la taille annoncée à la taille réelle avant de réserver quoi que ce soit pour 4 milliards de points.
     assert time.perf_counter() - start < 1.0
 
 
 def test_compteur_de_triangles_absurde_echoue_proprement():
-    """Compteur de triangles absurde avec un buffer minuscule → échec propre, pas d'allocation déraisonnable."""
+    """Compteur de triangles absurde → échec propre, sans grosse allocation mémoire."""
     points = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
     data = encode_point_set(points) + _COMPTEUR_ABSURDE + b"\x00" * 12
 
@@ -161,6 +166,5 @@ def test_indice_de_sommet_egal_au_nombre_de_sommets_echoue():
     """Indice de sommet pile à la limite (indice == nombre de sommets) → échec."""
     points = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
 
-    # Les indices valides vont de 0 à len(points) - 1 : 3 est donc le premier indice invalide, et le plus susceptible de passer à travers un test de bornes écrit avec un <= au lieu d'un <.
     with pytest.raises(BinaryFormatError):
         encode_triangles(points, [(0, 1, len(points))])

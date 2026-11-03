@@ -13,3 +13,6 @@ select = [
 markers = [
     "perf: tests de performance (bornes de temps larges, exclus de `make unit_test`)",
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["triangulator"]

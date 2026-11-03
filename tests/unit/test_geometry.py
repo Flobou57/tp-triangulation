@@ -1,3 +1,5 @@
+"""Tests de l'algorithme de triangulation (PLAN.md, section 1)."""
+
 import math
 import random
 
@@ -21,7 +23,7 @@ def _total_area(points, triangles):
 
 
 def _circumcircle_contains(a, b, c, p, tolerance=1e-9):
-    """True si le point p est strictement à l'intérieur du cercle circonscrit à (a, b, c)."""
+    """Détermine si p est strictement dans le cercle circonscrit à (a, b, c)."""
     ax, ay = a[0] - p[0], a[1] - p[1]
     bx, by = b[0] - p[0], b[1] - p[1]
     cx, cy = c[0] - p[0], c[1] - p[1]
@@ -32,12 +34,14 @@ def _circumcircle_contains(a, b, c, p, tolerance=1e-9):
     )
     orientation = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])
     if orientation < 0:
+        # Le signe du déterminant dépend du sens (horaire/anti-horaire) de a, b, c :
+        # on le corrige pour que "det > 0" signifie toujours "p est dedans"
         det = -det
     return det > tolerance
 
 
 def _is_delaunay(points, triangles, tolerance=1e-9):
-    """True si aucun point n'est dans le cercle circonscrit d'un des triangles (propriété de Delaunay)."""
+    """Vérifie qu'aucun point n'est dans le cercle circonscrit des triangles."""
     for i, j, k in triangles:
         a, b, c = points[i], points[j], points[k]
         for idx, p in enumerate(points):
@@ -94,7 +98,7 @@ def test_sous_ensemble_de_points_alignes_dans_un_nuage_plus_large_reussit():
 
 
 def test_points_dupliques_ne_plantent_pas_et_pas_de_triangle_daire_nulle():
-    """Points dupliqués, mêmes coordonnées exactes → succès, pas de plantage, pas d'aire nulle."""
+    """Points dupliqués (mêmes coordonnées) → succès, sans plantage ni aire nulle."""
     points = [(0.0, 0.0), (0.0, 0.0), (4.0, 0.0), (0.0, 4.0)]
     triangles = triangulate(points)
     assert len(triangles) > 0
@@ -119,16 +123,23 @@ def test_coordonnees_negatives_ou_tres_grandes_reussissent():
 def test_points_concycliques_respectent_la_propriete_de_delaunay():
     """Points concycliques → succès, la propriété de Delaunay reste respectée."""
     n = 8
-    points = [(math.cos(2 * math.pi * i / n), math.sin(2 * math.pi * i / n)) for i in range(n)]
+    points = [
+        (math.cos(2 * math.pi * i / n), math.sin(2 * math.pi * i / n)) for i in range(n)
+    ]
     triangles = triangulate(points)
+    # Tolérance plus large : avec des points pile sur le même cercle, le test
+    # "dans/hors du cercle" est numériquement limite
     assert _is_delaunay(points, triangles, tolerance=1e-6)
 
 
 def test_point_tres_eloigne_ne_casse_pas_le_calcul():
     """Un point très éloigné du reste du nuage → succès, ne casse pas le calcul."""
     rng = random.Random(1)
-    points = [(rng.uniform(-10, 10), rng.uniform(-10, 10)) for _ in range(20)] + [(1e9, 1e9)]
+    points = [(rng.uniform(-10, 10), rng.uniform(-10, 10)) for _ in range(20)]
+    points += [(1e9, 1e9)]
     triangles = triangulate(points)
+    # Tolérance large : avec un point à 1e9, les calculs de cercle circonscrit
+    # perdent en précision, une tolérance stricte donnerait des faux négatifs
     assert _is_delaunay(points, triangles, tolerance=1.0)
 
 
@@ -141,4 +152,8 @@ def test_ordre_des_points_melange_donne_un_resultat_geometriquement_equivalent()
     triangles = triangulate(points)
     shuffled_triangles = triangulate(shuffled)
 
-    assert _total_area(points, triangles) == pytest.approx(_total_area(shuffled, shuffled_triangles))
+    # On compare l'aire totale, pas la liste des triangles : un ordre d'entrée
+    # différent peut produire une triangulation différente mais tout aussi valide
+    aire_originale = _total_area(points, triangles)
+    aire_melangee = _total_area(shuffled, shuffled_triangles)
+    assert aire_originale == pytest.approx(aire_melangee)

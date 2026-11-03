@@ -1,3 +1,5 @@
+"""Tests de performance : triangulation, conversion binaire, API bout-en-bout."""
+
 import random
 import time
 
@@ -14,7 +16,7 @@ from triangulator.geometry import triangulate
 
 pytestmark = pytest.mark.perf
 
-# Bornes larges en secondes : des garde-fous, pas des objectifs de perf.
+# garde-fous, pas des objectifs de perf
 _SEUIL_TRIANGULATION_PAR_TAILLE = {
     100: 1.0,
     1_000: 5.0,
@@ -46,12 +48,17 @@ _FACTEUR_VARIANCE_MAX = 5.0
 
 def _points_aleatoires(count, rng, borne=100.0):
     """`count` points uniformément répartis dans [-borne, borne]^2."""
-    return [(rng.uniform(-borne, borne), rng.uniform(-borne, borne)) for _ in range(count)]
+    return [
+        (rng.uniform(-borne, borne), rng.uniform(-borne, borne)) for _ in range(count)
+    ]
 
 
 def _points_presque_alignes(count, rng, bruit=1e-3):
     """`count` points proches de la droite y = x, perturbés d'un faible bruit."""
-    return [(float(i) + rng.uniform(-bruit, bruit), float(i) + rng.uniform(-bruit, bruit)) for i in range(count)]
+    return [
+        (float(i) + rng.uniform(-bruit, bruit), float(i) + rng.uniform(-bruit, bruit))
+        for i in range(count)
+    ]
 
 
 def _chronometrer(fonction, *args, **kwargs):
@@ -66,7 +73,7 @@ def _chronometrer(fonction, *args, **kwargs):
     sorted(_SEUIL_TRIANGULATION_PAR_TAILLE.items()),
 )
 def test_temps_de_triangulation_croit_mais_reste_sous_les_seuils(taille, seuil):
-    """Temps de triangulation sur des tailles croissantes → chaque taille reste sous son seuil."""
+    """Temps de triangulation à tailles croissantes → reste sous le seuil."""
     rng = random.Random(taille)
     points = _points_aleatoires(taille, rng)
 
@@ -76,7 +83,7 @@ def test_temps_de_triangulation_croit_mais_reste_sous_les_seuils(taille, seuil):
 
 
 def test_cas_extreme_de_points_ne_devient_pas_inutilisable():
-    """Cas extrême (ex: 20 000 points), au-delà des tailles réalistes → reste sous un seuil large."""
+    """Cas extrême (20 000 points), au-delà du réaliste → reste sous un seuil large."""
     rng = random.Random(1)
     points = _points_aleatoires(_TAILLE_CAS_EXTREME, rng)
 
@@ -86,10 +93,11 @@ def test_cas_extreme_de_points_ne_devient_pas_inutilisable():
 
 
 def test_encodage_decodage_binaire_de_gros_volumes_reste_rapide():
-    """Encodage/décodage binaire sur des jeux de données volumineux → reste sous un seuil séparé de la triangulation."""
+    """Encodage/décodage binaire sur gros volume → seuil propre, hors triangulation."""
     rng = random.Random(2)
     points = _points_aleatoires(_TAILLE_BINAIRE_VOLUMINEUX, rng)
-    triangles = [(i, (i + 1) % len(points), (i + 2) % len(points)) for i in range(len(points) - 2)]
+    nb = len(points)
+    triangles = [(i, (i + 1) % nb, (i + 2) % nb) for i in range(nb - 2)]
 
     _, duree_encodage_points = _chronometrer(encode_point_set, points)
     encoded_points = encode_point_set(points)
@@ -106,7 +114,7 @@ def test_encodage_decodage_binaire_de_gros_volumes_reste_rapide():
 
 
 def test_points_presque_alignes_en_grand_nombre_ne_degrade_pas_excessivement():
-    """Points presque alignés en grand nombre (pire cas potentiel) → reste sous un seuil large."""
+    """Points presque alignés en grand nombre (pire cas) → reste sous un seuil large."""
     rng = random.Random(3)
     points = _points_presque_alignes(_TAILLE_PRESQUE_ALIGNES, rng)
 
@@ -116,7 +124,7 @@ def test_points_presque_alignes_en_grand_nombre_ne_degrade_pas_excessivement():
 
 
 def test_distribution_groupee_et_distribution_etalee_restent_sous_le_meme_seuil():
-    """Points très regroupés vs très étalés, même taille → la densité spatiale ne casse pas la performance."""
+    """Points regroupés vs étalés, même taille → la densité ne casse pas la perf."""
     rng_groupes = random.Random(4)
     points_groupes = _points_aleatoires(_TAILLE_DISTRIBUTION, rng_groupes, borne=1e-2)
 
@@ -131,7 +139,7 @@ def test_distribution_groupee_et_distribution_etalee_restent_sous_le_meme_seuil(
 
 
 def test_performance_api_bout_en_bout_pour_un_gros_pointset(monkeypatch):
-    """Performance côté API bout-en-bout (sérialisation + décodage + calcul + ré-encodage), pas seulement l'algo isolé."""
+    """Perf API bout-en-bout : sérialisation + décodage + calcul + ré-encodage."""
     rng = random.Random(6)
     points = _points_aleatoires(_TAILLE_API_BOUT_EN_BOUT, rng)
     monkeypatch.setattr("triangulator.app.fetch_point_set", lambda point_set_id: points)
@@ -149,7 +157,7 @@ def test_performance_api_bout_en_bout_pour_un_gros_pointset(monkeypatch):
 
 
 def test_appels_repetes_a_la_triangulation_restent_stables():
-    """Appels répétés successifs (50x) sur les mêmes données → pas de ralentissement progressif."""
+    """Appels répétés (50x) sur les mêmes données → pas de ralentissement progressif."""
     rng = random.Random(7)
     points = _points_aleatoires(_TAILLE_APPELS_REPETES, rng)
 
@@ -158,6 +166,8 @@ def test_appels_repetes_a_la_triangulation_restent_stables():
         _, duree = _chronometrer(triangulate, points)
         durees.append(duree)
 
+    # On compare les 10 premiers appels aux 10 derniers (sur 50) : si une fuite
+    # mémoire ou un ralentissement progressif, la fin doit être nettement plus lente
     debut_moyenne = sum(durees[:10]) / 10
     fin_moyenne = sum(durees[-10:]) / 10
 
@@ -169,6 +179,10 @@ def test_variance_entre_plusieurs_executions_du_meme_test_reste_limitee():
     rng = random.Random(8)
     points = _points_aleatoires(_TAILLE_VARIANCE, rng)
 
-    durees = [_chronometrer(triangulate, points)[1] for _ in range(_NB_EXECUTIONS_VARIANCE)]
+    durees = [
+        _chronometrer(triangulate, points)[1] for _ in range(_NB_EXECUTIONS_VARIANCE)
+    ]
 
+    # +1e-6 évite une division par 0 si la machine est si rapide que
+    # min(durees) est quasi nul
     assert max(durees) < min(durees) * _FACTEUR_VARIANCE_MAX + 1e-6
